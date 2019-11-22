@@ -144,6 +144,14 @@ linear_mod6 = lm(bwt ~ babysex + bhead + blength + bwt +
                    mheight + mrace +
                    parity + ppwt + smoken, data = birthwt_data2)
 summary(linear_mod6)
+
+birthwt_data3 = birthwt_data%>%
+  select(babysex,bhead,blength,bwt,
+                   delwt, gaweeks,
+                   mheight, mrace,
+                   parity, ppwt, smoken)
+smooth_mod = mgcv::gam(bwt ~ s(bhead) +s(blength)+s(babysex), data = birthwt_data3)
+wiggly_mod = mgcv::gam(y ~ s(x, k = 30), sp = 10e-6, data = train_df)
 ```
 
 ```{r}
@@ -153,4 +161,37 @@ birthwt_data2 %>%
   ggplot(aes(x = resid,y = pred)) +
   geom_point()
 
+# compare
+reference_model1 = lm(bwt~ blength + gaweeks, data = birthwt_data)
+
+reference_model2 = lm(bwt ~ bhead*blength*babysex, data = birthwt_data)
+
+cv_df =
+  crossv_mc(birthwt_data3, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+
+cv_df = 
+  cv_df %>% 
+  mutate(final_mod  = map(train, ~lm(bwt ~ babysex + bhead + blength + bwt +
+                                      delwt + gaweeks + mheight + mrace +
+                                      parity + ppwt + smoken, data = .x)),
+         ref_mod1     = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         ref_mod2  = map(train, ~lm(bwt ~ bhead*blength*babysex, data = .x))) %>% 
+  mutate(rmse_linear = map2_dbl(final_mod, test, ~rmse(model = .x, data = .y)),
+         rmse_pwl    = map2_dbl(ref_mod1, test, ~rmse(model = .x, data = .y)),
+         rmse_smooth = map2_dbl(ref_mod2, test, ~rmse(model = .x, data = .y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
+
+The model with the smallest root mean square error is the model we built from backward elimination.
