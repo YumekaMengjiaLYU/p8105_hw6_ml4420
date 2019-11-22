@@ -5,6 +5,8 @@ output: github_document
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(modelr)
+library(mgcv)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -12,12 +14,20 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Problem 1
 ```{r}
 birthwt_data = read.csv("data/birthweight.csv") %>%
+  janitor::clean_names() %>%
+  na.omit() %>%
   mutate(babysex = recode_factor(babysex, `1` = "male", `2` = "female")) %>%
   mutate(frace = recode_factor(frace, `1` = "White", `2` = "Black", `3` = "Asian", 
                                `4` = "Puerto Rican", `8` = "Other", `9` = "Unknown")) %>%
   mutate(malform = recode_factor(malform, `0` = "absent", `1` = "present")) %>%
   mutate(mrace = recode_factor(mrace, `1` = "White", `2` = "Black", `3` = "Asian",
                                `4` = "Puerto Rican", `8` = "Other")) 
+
+# fit a regression using all predictors
+linear_mod = lm( bwt ~ ., data = birthwt_data)
+summary(linear_mod)
+
+
 
 
 
