@@ -7,6 +7,7 @@ output: github_document
 library(tidyverse)
 library(modelr)
 library(mgcv)
+library(corrplot)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -24,11 +25,132 @@ birthwt_data = read.csv("data/birthweight.csv") %>%
                                `4` = "Puerto Rican", `8` = "Other")) 
 
 # fit a regression using all predictors
-linear_mod = lm( bwt ~ ., data = birthwt_data)
+linear_mod = lm( bwt ~ ., data = birthwt_data) 
 summary(linear_mod)
 
 
+# carry out backward elimination : take out non-significant values one at a time
+
+```
+
+In the regression summary, we can see that there are three variables with NAs. To further investigate, we choose to do a 
+
+```{r}
+
+v
+```
+
+We find out that `pnumlbw` and `pnumgsa` have zero variance and thus are not variables. Including them in the regression model would not help us better predict the outcome as they do not carry information.
+
+```{r}
+birthwt_data1 = birthwt_data %>%
+  select(-pnumlbw, -pnumsga)
+
+var(birthwt_data$wtgain)
+linear_mod1 = lm( bwt ~ ., data = birthwt_data1) 
+summary(linear_mod1)
 
 
+
+```
+
+For `wtgain`, we still get NAs. It indicates that our predictor variables are not all linearly independent. We can choose to exclude the variable and the model will still have the same coefficients as before. Therefore, we take out `wtgain`.
+
+```{r}
+birthwt_data2 = birthwt_data1%>%
+  select(-wtgain)
+
+linear_mod2 = lm( bwt ~ ., data = birthwt_data2) 
+summary(linear_mod2)
+
+```
+
+With all the variables having coefficients, we can now carry out backward elimination, meaning that we take out non-significant variables one at a time.
+
+Since `fraceOther` has the highest p-value among all the covariates, we take it out. We should see whether the categorical variable as a whole is significant or not, as we cannot include some categories of a variable and exclude some categories having insignificant difference.
+
+```{r}
+test_model = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks + malform + 
+                   menarche + mheight + momage + mrace +
+                   parity + ppbmi + ppwt + smoken, data = birthwt_data2)
+
+anova(linear_mod2, test_model)
+
+summary(test_model)
+```
+Since p-value is bigger than 0.05, it means the difference is significant and the variable `frace` should **not** be included in the model.
+
+Now the covariate with the highest p-value is `malform`. 
+```{r}
+test_model1 = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks +  
+                   menarche + mheight + momage + mrace +
+                   parity + ppbmi + ppwt + smoken, data = birthwt_data2)
+
+anova(test_model, test_model1)
+
+summary(test_model1)
+```
+Since the p-value is greater than 0.05, it means the difference is insignificant and the variable `malform` should not be included in the model.
+
+Now we take out `ppbmi` which is the covariate with the largest p-value.
+
+```{r}
+linear_mod3 = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks +  
+                   menarche + mheight + momage + mrace +
+                   parity + ppwt + smoken, data = birthwt_data2)
+summary(linear_mod3)
+
+```
+Now we take out `momage` which is the covariate with the largest p-value.
+```{r}
+linear_mod4 = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks +  
+                   menarche + mheight + mrace +
+                   parity + ppwt + smoken, data = birthwt_data2)
+summary(linear_mod4)
+```
+Now we take out `menarche` which is the covariate with the largest p-value.
+
+```{r}
+linear_mod5 = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks +  
+                   mheight + mrace +
+                   parity + ppwt + smoken, data = birthwt_data2)
+summary(linear_mod5)
+```
+
+Since `mraceAsian` has the highest p-value among all the covariates, we take it out. We should see whether the categorical variable as a whole is significant or not, as we cannot include some categories of a variable and exclude some categories having insignificant difference.
+
+```{r}
+test_model2 = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks +  
+                   mheight + 
+                   parity + ppwt + smoken, data = birthwt_data2)
+anova(linear_mod5, test_model2)
+
+summary(test_model5)
+```
+
+Since p-value is less than 0.5, it means the difference is significant and the variable `mrace` should be included in the model.
+
+Now we take out `fincome` which is the covariate with the highest p-value
+
+```{r}
+linear_mod6 = lm(bwt ~ babysex + bhead + blength + bwt +
+                   delwt + gaweeks +
+                   mheight + mrace +
+                   parity + ppwt + smoken, data = birthwt_data2)
+summary(linear_mod6)
+```
+
+```{r}
+birthwt_data2 %>%
+  modelr::add_predictions(linear_mod6) %>%
+  modelr::add_residuals(linear_mod6) %>%
+  ggplot(aes(x = resid,y = pred)) +
+  geom_point()
 
 ```
