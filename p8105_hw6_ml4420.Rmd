@@ -1,5 +1,6 @@
 ---
 title: "p8105_hw6_ml4420"
+author: "Mengjia Lyu"
 output: github_document
 ---
 
@@ -7,7 +8,7 @@ output: github_document
 library(tidyverse)
 library(modelr)
 library(mgcv)
-library(corrplot)
+
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -15,7 +16,12 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Problem 1
 ```{r}
 birthwt_data = read.csv("data/birthweight.csv") %>%
-  janitor::clean_names() %>%
+  janitor::clean_names() 
+
+# check for missing values
+sum(is.na(birthwt_data))
+
+birthwt_data = birthwt_data %>%
   na.omit() %>%
   mutate(babysex = recode_factor(babysex, `1` = "male", `2` = "female")) %>%
   mutate(frace = recode_factor(frace, `1` = "White", `2` = "Black", `3` = "Asian", 
@@ -24,56 +30,63 @@ birthwt_data = read.csv("data/birthweight.csv") %>%
   mutate(mrace = recode_factor(mrace, `1` = "White", `2` = "Black", `3` = "Asian",
                                `4` = "Puerto Rican", `8` = "Other")) 
 
+
 # fit a regression using all predictors
 linear_mod = lm( bwt ~ ., data = birthwt_data) 
 summary(linear_mod)
 
 
-# carry out backward elimination : take out non-significant values one at a time
 
 ```
+We can see that the sum of missing values is 0, meaning there are no missing values.
 
-In the regression summary, we can see that there are three variables with NAs. To further investigate, we choose to do a 
+In the regression summary, we can see that there are three variables (`pnumlbw`, `pnumsga`, `wtgain`) whose regression coefficients are not defined because of singularities. To further investigate, we check if the three variables are singular, or in other words, have zero variance.
+
+```{r}
+var(pull(birthwt_data, pnumsga))
+var(pull(birthwt_data, pnumlbw))
+var(pull(birthwt_data, wtgain))
+```
+
+We find out that `pnumlbw` and `pnumgsa` have zero variance and thus are not variables. Including them in the regression model would not help us better predict the outcome as they do not carry any information.
 
 ```{r}
 
-v
-```
 
-We find out that `pnumlbw` and `pnumgsa` have zero variance and thus are not variables. Including them in the regression model would not help us better predict the outcome as they do not carry information.
-
-```{r}
-birthwt_data1 = birthwt_data %>%
-  select(-pnumlbw, -pnumsga)
-
-var(birthwt_data$wtgain)
-linear_mod1 = lm( bwt ~ ., data = birthwt_data1) 
+linear_mod1 = lm( bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks + malform + 
+                   menarche + mheight + momage + mrace +
+                   parity + ppbmi + ppwt + smoken + frace + wtgain, data = birthwt_data) 
 summary(linear_mod1)
 
 
 
 ```
 
-For `wtgain`, we still get NAs. It indicates that our predictor variables are not all linearly independent. We can choose to exclude the variable and the model will still have the same coefficients as before. Therefore, we take out `wtgain`.
+For `wtgain`, its regression coefficients are still not defined. This indicates that our predictor variables are not all linearly independent; in other words, collinearity exists. We can choose to exclude the variable `wtgain` and the model should have the same coefficients as before. Therefore, we take out `wtgain`.
 
 ```{r}
-birthwt_data2 = birthwt_data1%>%
-  select(-wtgain)
 
-linear_mod2 = lm( bwt ~ ., data = birthwt_data2) 
+
+linear_mod2 = lm( bwt ~ babysex + bhead + blength + bwt +
+                   delwt + fincome + gaweeks + malform + 
+                   menarche + mheight + momage + mrace +
+                   parity + ppbmi + ppwt + smoken + frace, data = birthwt_data) 
 summary(linear_mod2)
 
 ```
 
+We can see that the coefficients for variables in the model indeed remain the same, again reinforcing that `wtgain` is a redundant variable for the model.
+
 With all the variables having coefficients, we can now carry out backward elimination, meaning that we take out non-significant variables one at a time.
 
-Since `fraceOther` has the highest p-value among all the covariates, we take it out. We should see whether the categorical variable as a whole is significant or not, as we cannot include some categories of a variable and exclude some categories having insignificant difference.
+`fraceOther` has the highest p-value among all the covariates, but it only represents a level of the categorical variable `frace`. We should see whether the categorical variable `malform` as a whole is significant or not, as we cannot include some categories of a variable and exclude other categories. Therfore, we would like to carry out a test to compare the two models with and without the categorical variable and check if the difference is insignificant.
 
 ```{r}
 test_model = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + fincome + gaweeks + malform + 
                    menarche + mheight + momage + mrace +
-                   parity + ppbmi + ppwt + smoken, data = birthwt_data2)
+                   parity + ppbmi + ppwt + smoken, data = birthwt_data)
 
 anova(linear_mod2, test_model)
 
@@ -81,12 +94,12 @@ summary(test_model)
 ```
 Since p-value is bigger than 0.05, it means the difference is significant and the variable `frace` should **not** be included in the model.
 
-Now the covariate with the highest p-value is `malform`. 
+Now the covariate with the highest p-value is `malformpresent`, which only represents a level of the categorical variable `malform`. We should see whether the categorical variable `malform` as a whole is significant or not, as we cannot include some categories of a variable and exclude other categories. Therfore, we would like to carry out a test to compare the two models with and without the categorical variable and check if the difference is insignificant.
 ```{r}
 test_model1 = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + fincome + gaweeks +  
                    menarche + mheight + momage + mrace +
-                   parity + ppbmi + ppwt + smoken, data = birthwt_data2)
+                   parity + ppbmi + ppwt + smoken, data = birthwt_data)
 
 anova(test_model, test_model1)
 
@@ -94,80 +107,83 @@ summary(test_model1)
 ```
 Since the p-value is greater than 0.05, it means the difference is insignificant and the variable `malform` should not be included in the model.
 
-Now we take out `ppbmi` which is the covariate with the largest p-value.
+Now we take out `ppbmi` which is the covariate with the largest p-value. Since it is a continuous variable, we need not to be concerned if it as a whole is significant or not.
 
 ```{r}
 linear_mod3 = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + fincome + gaweeks +  
                    menarche + mheight + momage + mrace +
-                   parity + ppwt + smoken, data = birthwt_data2)
+                   parity + ppwt + smoken, data = birthwt_data)
 summary(linear_mod3)
 
 ```
-Now we take out `momage` which is the covariate with the largest p-value.
+
+Now we take out `momage` which is the covariate with the largest p-value. Since it is a continuous variable, we need not to be concerned if it as a whole is significant or not.
 ```{r}
 linear_mod4 = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + fincome + gaweeks +  
                    menarche + mheight + mrace +
-                   parity + ppwt + smoken, data = birthwt_data2)
+                   parity + ppwt + smoken, data = birthwt_data)
 summary(linear_mod4)
 ```
-Now we take out `menarche` which is the covariate with the largest p-value.
+Now we take out `menarche` which is the covariate with the largest p-value. Since it is a continuous variable, we need not to be concerned if it as a whole is significant or not.
 
 ```{r}
 linear_mod5 = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + fincome + gaweeks +  
                    mheight + mrace +
-                   parity + ppwt + smoken, data = birthwt_data2)
+                   parity + ppwt + smoken, data = birthwt_data)
 summary(linear_mod5)
 ```
 
-Since `mraceAsian` has the highest p-value among all the covariates, we take it out. We should see whether the categorical variable as a whole is significant or not, as we cannot include some categories of a variable and exclude some categories having insignificant difference.
+`mraceAsian`, which only represents a level of the categorical variable `mrace`, is the covariate with the highest p-value. We should see whether the categorical variable `mrace` as a whole is significant or not, as we cannot include some categories of a variable and exclude other categories. Therfore, we would like to carry out a test to compare the two models with and without the categorical variable and check if the difference is insignificant.
 
 ```{r}
 test_model2 = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + fincome + gaweeks +  
                    mheight + 
-                   parity + ppwt + smoken, data = birthwt_data2)
+                   parity + ppwt + smoken, data = birthwt_data)
 anova(linear_mod5, test_model2)
 
-summary(test_model5)
+summary(linear_mod5)
 ```
 
 Since p-value is less than 0.5, it means the difference is significant and the variable `mrace` should be included in the model.
 
-Now we take out `fincome` which is the covariate with the highest p-value
+Now we take out `fincome` which is the covariate with the highest p-value. Since it is a continuous variable, we need not to be concerned if it as a whole is significant or not.
 
 ```{r}
 linear_mod6 = lm(bwt ~ babysex + bhead + blength + bwt +
                    delwt + gaweeks +
                    mheight + mrace +
-                   parity + ppwt + smoken, data = birthwt_data2)
+                   parity + ppwt + smoken, data = birthwt_data)
 summary(linear_mod6)
 
-birthwt_data3 = birthwt_data%>%
-  select(babysex,bhead,blength,bwt,
-                   delwt, gaweeks,
-                   mheight, mrace,
-                   parity, ppwt, smoken)
-smooth_mod = mgcv::gam(bwt ~ s(bhead) +s(blength)+s(babysex), data = birthwt_data3)
-wiggly_mod = mgcv::gam(y ~ s(x, k = 30), sp = 10e-6, data = train_df)
+
 ```
 
-```{r}
-birthwt_data2 %>%
+Since all the covariates are significant (`mrace` as a whole is significant even though `mraceAsian` is not), we stop here and conclude it to be our final model.
+
+```{r warning = FALSE, message = FALSE}
+birthwt_data %>%
   modelr::add_predictions(linear_mod6) %>%
   modelr::add_residuals(linear_mod6) %>%
-  ggplot(aes(x = resid,y = pred)) +
-  geom_point()
+  ggplot(aes(x = pred,y = resid)) +
+  geom_point() +
+  geom_smooth(color = "violet") +
+  labs(
+    x = "Fitted Values",
+    y = "Residuals",
+    title = "Model Residuals Against Fitted Values"
+  )
 
-# compare
+# compare with other models
 reference_model1 = lm(bwt~ blength + gaweeks, data = birthwt_data)
 
 reference_model2 = lm(bwt ~ bhead*blength*babysex, data = birthwt_data)
 
 cv_df =
-  crossv_mc(birthwt_data3, 100) %>% 
+  crossv_mc(birthwt_data, 100) %>% 
   mutate(
     train = map(train, as_tibble),
     test = map(test, as_tibble))
@@ -179,19 +195,99 @@ cv_df =
                                       parity + ppwt + smoken, data = .x)),
          ref_mod1     = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
          ref_mod2  = map(train, ~lm(bwt ~ bhead*blength*babysex, data = .x))) %>% 
-  mutate(rmse_linear = map2_dbl(final_mod, test, ~rmse(model = .x, data = .y)),
-         rmse_pwl    = map2_dbl(ref_mod1, test, ~rmse(model = .x, data = .y)),
-         rmse_smooth = map2_dbl(ref_mod2, test, ~rmse(model = .x, data = .y)))
+  mutate(rmse_final = map2_dbl(final_mod, test, ~rmse(model = .x, data = .y)),
+         rmse_ref1    = map2_dbl(ref_mod1, test, ~rmse(model = .x, data = .y)),
+         rmse_ref2 = map2_dbl(ref_mod2, test, ~rmse(model = .x, data = .y)))
 
 cv_df %>% 
   select(starts_with("rmse")) %>% 
-pivot_longer(
+  pivot_longer(
     everything(),
     names_to = "model", 
     values_to = "rmse",
     names_prefix = "rmse_") %>% 
   mutate(model = fct_inorder(model)) %>% 
-  ggplot(aes(x = model, y = rmse)) + geom_violin()
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin() +
+  ggtitle("Distribution of RMSE values for Three Candidate Models")
 ```
 
-The model with the smallest root mean square error is the model we built from backward elimination.
+The RMSE is the standard deviation of prediction errors. From the violin graph, we can see that the model with the smallest variance in prediction errors is the model we built from backward elimination! The reference model with birth and gestational age as predictors (main effects only) have the highest variance in prediction errors. The reference model using head circumference, length, sex and all interactions between these has a slighter higher variance in the distribution of prediction errors than our final model. 
+
+## Problem 2
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+
+rs_df =
+  weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) 
+
+# r.square histogram overlaid with kernel density curve
+ggplot(rs_df, aes(x=r.squared)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                       colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#7F00FF") +
+    ggtitle("R-squared Histogram Overlaid with Density Curve")# Overlay with transparent density plot
+
+beta_df = weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) %>%
+  group_by(.id) %>%
+  select(.id, term, estimate) %>%
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  )  %>%
+  rename( beta_0 = "(Intercept)" ,
+          beta_1 = tmin) %>%
+  mutate(
+    log_beta = log(beta_0*beta_1)
+  ) 
+
+# log beta1*beta0 histogram overlaid with kernel density curve
+ggplot(beta_df, aes(x=log_beta)) + 
+    geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                   
+                   colour="black", fill="white") +
+    geom_density(alpha=.2, fill="#FF6666") +
+    ggtitle("Log(beta1*beta0) Histogram Overlaid with Density Curve") +
+    xlab("log(beta1*beta0)")# Overlay with transparent density plot
+```
+
+
+We can see from the two graphs that estimates for both R-squared and log(beta0*beta1) are approximately normally distributed.
+
+The distribution of R-squared lies in the high range between 0.88 and 0.94, meaning that most of the variation of `tmax` is explained by `tmin` in a regression model.
+
+That the distribution of estimates for log(beta0*beta1) is approximately normal indicates that the product of regression slope and intercept follows a log-normal distribution.
+```{r}
+
+quantile(pull(rs_df, r.squared), probs=c(0.025, 0.975))
+quantile(pull(beta_df, log_beta), probs=c(0.025, 0.975))
+
+
+```
+
+The 2.5% and 97.5% quantiles for R-squared estimates are `r quantile(pull(rs_df, r.squared), probs=c(0.025, 0.975))[1]` and `r quantile(pull(rs_df, r.squared), probs=c(0.025, 0.975))[2]` respectively. Therefore the 95% confidence interval for R-squared estimates is [`r quantile(pull(rs_df, r.squared), probs=c(0.025, 0.975))[1]`, `r quantile(pull(rs_df, r.squared), probs=c(0.025, 0.975))[2]`].
+
+The 2.5% and 97.5% quantiles for log(beta0*beta1) estimates are `r quantile(pull(beta_df, log_beta), probs=c(0.025, 0.975))[1]` and `r quantile(pull(beta_df, log_beta), probs=c(0.025, 0.975))[2]` respectively. Therefore the 95% confidence interval for it is [`r quantile(pull(beta_df, log_beta), probs=c(0.025, 0.975))[1]`, `r quantile(pull(beta_df, log_beta), probs=c(0.025, 0.975))[2]`].
